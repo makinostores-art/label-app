@@ -3,13 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<!-- version 2026-09-12b -->
+<!-- version 2026-09-12c -->
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>ラベル用リスト作成</title>
 <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"
         onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';document.head.appendChild(s);"></script>
+<script src="https://cdn.jsdelivr.net/npm/@undecaf/zbar-wasm@0.11.0/dist/index.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -21,7 +22,7 @@
 
   #camWrap { position: relative; background: #000; height: 34vh; flex: none; }
   #video { width: 100%; height: 100%; object-fit: cover; }
-  #guide { position: absolute; left: 12%; right: 12%; top: 35%; height: 30%; border: 3px solid rgba(255,255,255,.8); border-radius: 8px; pointer-events: none; }
+  #guide { position: absolute; left: 5%; right: 5%; top: 30%; height: 40%; border: 3px solid rgba(255,255,255,.8); border-radius: 8px; pointer-events: none; }
   #camMsg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 20px; text-align: center; padding: 16px; background: rgba(0,0,0,.6); }
   #camMsg.hide { display: none; }
   #camMsg button { font-size: 26px; font-weight: bold; padding: 20px 36px; border: none; border-radius: 14px; background: #2b5797; color: #fff; }
@@ -244,13 +245,64 @@ function onCode(text) {
   lookup(code);
 }
 
+let engine = '';
+let zxReader = null;
+const cropCanvas = document.createElement('canvas');
+const cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true });
+
+/** 映像の中央帯（横90%×縦40%）を切り出して解析。ZBar優先、だめならZXing */
+function startScanLoop(video) {
+  const useZbar = typeof zbarWasm !== 'undefined';
+  engine = useZbar ? 'ZBar' : 'ZXing';
+  if (!useZbar && typeof ZXing !== 'undefined' && !zxReader) {
+    const hints = new Map();
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+      ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8,
+      ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.ITF
+    ]);
+    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+    zxReader = new ZXing.BrowserMultiFormatReader(hints);
+  }
+
+  const step = async () => {
+    if (!scanning) return;
+    try {
+      if (video.readyState >= 2 && video.videoWidth) {
+        const vw = video.videoWidth, vh = video.videoHeight;
+        const sx = Math.round(vw * 0.05), sw = Math.round(vw * 0.90);
+        const sy = Math.round(vh * 0.30), sh = Math.round(vh * 0.40);
+        if (cropCanvas.width !== sw || cropCanvas.height !== sh) { cropCanvas.width = sw; cropCanvas.height = sh; }
+        cropCtx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+        frames++;
+        if (useZbar) {
+          const img = cropCtx.getImageData(0, 0, sw, sh);
+          const syms = await zbarWasm.scanImageData(img);
+          if (syms && syms.length) {
+            const t = syms[0].decode();
+            if (t) onCode(t);
+          }
+        } else if (zxReader) {
+          try {
+            const r = zxReader.decodeFromCanvas(cropCanvas);
+            if (r) onCode(r.getText());
+          } catch (e) { /* NotFound は無視 */ }
+        }
+      }
+    } catch (e) {
+      setStatus('読み取りエラー: ' + (e.message || e));
+    }
+    setTimeout(step, 120);
+  };
+  step();
+}
+
 async function startCamera() {
   const video = $('video');
   try {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       throw new Error('このブラウザはカメラに対応していません。Safariで開いてください。');
     }
-    if (typeof ZXing === 'undefined') {
+    if (typeof zbarWasm === 'undefined' && typeof ZXing === 'undefined') {
       throw new Error('読み取りライブラリを読み込めませんでした。電波状況を確認して再読み込みしてください。');
     }
     setStatus('カメラ起動中…');
@@ -267,25 +319,14 @@ async function startCamera() {
     $('camMsg').classList.add('hide');
     setStatus('カメラ起動OK → 読み取り開始中…');
 
-    const hints = new Map();
-    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
-      ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8,
-      ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.ITF
-    ]);
-    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-    const reader = new ZXing.BrowserMultiFormatReader(hints, 200);
     scanning = true;
     frames = 0;
-
-    reader.decodeFromStream(stream, video, (result, err) => {
-      frames++;
-      if (result) onCode(result.getText());
-    }).catch(e => { scanning = false; camMsg('読み取りを開始できませんでした。\n' + (e.message || e), true); });
+    startScanLoop(video);
 
     // 生存表示：数字が増え続けていれば読み取り処理は動いている
     const tick = () => {
       if (!scanning) return;
-      setStatus('読み取り中 ' + frames + (lastRawText ? '　最後に読んだ: ' + lastRawText : ''));
+      setStatus('読み取り中(' + engine + ') ' + frames + (lastRawText ? '　最後に読んだ: ' + lastRawText : ''));
       setTimeout(tick, 1000);
     };
     tick();

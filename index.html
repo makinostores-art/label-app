@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<!-- version 2026-09-12e -->
+<!-- version 2026-09-12f -->
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -17,42 +17,42 @@
   html, body { margin: 0; height: 100%; background: #f4f4f4; font-family: -apple-system, "Hiragino Sans", sans-serif; color: #222; }
   body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 
-  header { background: #2b5797; color: #fff; padding: 12px 16px; font-size: 22px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
-  header small { font-size: 14px; font-weight: normal; opacity: .85; }
+  header { background: #2b5797; color: #fff; padding: 5px 12px; font-size: 15px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+  header small { font-size: 11px; font-weight: normal; opacity: .85; }
 
-  #camWrap { position: relative; background: #000; height: 34vh; flex: none; }
+  #camWrap { position: relative; background: #000; height: 22vh; min-height: 130px; flex: none; }
   #video { width: 100%; height: 100%; object-fit: cover; }
   #guide { position: absolute; left: 5%; right: 5%; top: 30%; height: 40%; border: 3px solid rgba(255,255,255,.8); border-radius: 8px; pointer-events: none; }
   #camMsg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 20px; text-align: center; padding: 16px; background: rgba(0,0,0,.6); }
   #camMsg.hide { display: none; }
-  #camMsg button { font-size: 26px; font-weight: bold; padding: 20px 36px; border: none; border-radius: 14px; background: #2b5797; color: #fff; }
-  #statusBar { flex: none; background: #333; color: #fff; display: flex; align-items: center; gap: 12px; padding: 6px 16px; }
-  #camStatus { flex: 1; font-size: 16px; }
-  #btnStop { display: none; font-size: 17px; padding: 8px 16px; border: none; border-radius: 8px; background: #c0392b; color: #fff; }
+  #camMsg button { font-size: 19px; font-weight: bold; padding: 12px 24px; border: none; border-radius: 14px; background: #2b5797; color: #fff; }
+  #statusBar { flex: none; background: #333; color: #fff; display: flex; align-items: center; gap: 8px; padding: 3px 12px; }
+  #camStatus { flex: 1; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #btnStop { display: none; font-size: 13px; padding: 5px 10px; border: none; border-radius: 8px; background: #c0392b; color: #fff; }
   #btnStop.show { display: block; }
 
-  #result { flex: none; padding: 14px 16px; background: #fff; border-bottom: 1px solid #ddd; min-height: 96px; }
-  #result .name { font-size: 26px; font-weight: bold; line-height: 1.3; word-break: break-all; }
-  #result .sub { font-size: 20px; margin-top: 6px; color: #444; }
-  #result .price { font-size: 30px; font-weight: bold; color: #c0392b; margin-right: 16px; }
+  #result { flex: none; padding: 6px 12px; background: #fff; border-bottom: 1px solid #ddd; min-height: 54px; }
+  #result .name { font-size: 17px; font-weight: bold; line-height: 1.25; word-break: break-all; }
+  #result .sub { font-size: 14px; margin-top: 2px; color: #444; }
+  #result .price { font-size: 19px; font-weight: bold; color: #c0392b; margin-right: 10px; }
   #result.notfound .name { color: #c0392b; }
 
-  #manual { display: flex; gap: 8px; padding: 10px 16px; background: #fff; border-bottom: 1px solid #ddd; flex: none; }
-  #manual input { flex: 1; font-size: 22px; padding: 10px; border: 2px solid #bbb; border-radius: 8px; }
-  #manual button { font-size: 20px; padding: 0 22px; border: none; border-radius: 8px; background: #555; color: #fff; }
+  #manual { display: flex; gap: 6px; padding: 5px 12px; background: #fff; border-bottom: 1px solid #ddd; flex: none; }
+  #manual input { flex: 1; font-size: 16px; padding: 6px 8px; border: 1px solid #bbb; border-radius: 6px; }
+  #manual button { font-size: 15px; padding: 0 14px; border: none; border-radius: 8px; background: #555; color: #fff; }
 
-  #list { flex: 1; overflow-y: auto; padding: 8px 16px; }
-  .row { display: flex; align-items: center; background: #fff; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
-  .row .no { width: 34px; font-size: 18px; color: #888; }
+  #list { flex: 1; overflow-y: auto; padding: 6px 10px; }
+  .row { display: flex; align-items: center; background: #fff; border-radius: 8px; padding: 6px 8px; margin-bottom: 5px; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .row .no { width: 26px; font-size: 14px; color: #888; }
   .row .body { flex: 1; min-width: 0; }
-  .row .n { font-size: 19px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .row .s { font-size: 15px; color: #666; }
-  .row .del { font-size: 22px; min-width: 60px; height: 56px; margin-left: 10px; border: 2px solid #e0a0a0; background: #fdeaea; border-radius: 10px; color: #c0392b; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
-  .row .del small { font-size: 11px; margin-top: 3px; }
+  .row .n { font-size: 15px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .s { font-size: 12px; color: #666; }
+  .row .del { font-size: 18px; min-width: 46px; height: 44px; margin-left: 8px; border: 2px solid #e0a0a0; background: #fdeaea; border-radius: 10px; color: #c0392b; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
+  .row .del small { font-size: 10px; margin-top: 2px; }
 
-  footer { flex: none; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: #fff; border-top: 1px solid #ddd; display: flex; gap: 12px; }
-  #btnClear { flex: 1; font-size: 20px; border: 2px solid #999; background: #fff; border-radius: 12px; padding: 18px 0; color: #333; }
-  #btnExcel { flex: 3; font-size: 26px; font-weight: bold; border: none; background: #2b5797; color: #fff; border-radius: 12px; padding: 18px 0; }
+  footer { flex: none; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: #fff; border-top: 1px solid #ddd; display: flex; gap: 8px; }
+  #btnClear { flex: 1; font-size: 15px; border: 1px solid #999; background: #fff; border-radius: 10px; padding: 12px 0; color: #333; }
+  #btnExcel { flex: 3; font-size: 19px; font-weight: bold; border: none; background: #2b5797; color: #fff; border-radius: 10px; padding: 12px 0; }
   #btnExcel:disabled { background: #aac; }
 
   #toast { position: fixed; left: 50%; top: 40%; transform: translateX(-50%); background: rgba(0,0,0,.85); color: #fff; padding: 16px 28px; font-size: 22px; border-radius: 12px; display: none; z-index: 10; }

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<!-- version 2026-09-12g -->
+<!-- version 2026-09-12h -->
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -132,8 +132,14 @@ async function lookup(jan) {
   busy = true;
   showResult({ name: '検索中…', sub: jan });
   try {
-    const res = await fetch(API_URL + '?jan=' + encodeURIComponent(jan) + '&_=' + Date.now());
-    const d = await res.json();
+    let d;
+    if (master) {
+      const r = master.get(jan);
+      d = r ? { ok: true, found: true, jan: jan, name: r[0], price: r[1], supplier: r[2] } : { ok: true, found: false, jan: jan };
+    } else {
+      const res = await fetch(API_URL + '?jan=' + encodeURIComponent(jan) + '&_=' + Date.now());
+      d = await res.json();
+    }
     if (!d.ok) throw new Error(d.error || 'エラー');
     if (!d.found) {
       beep(false);
@@ -371,17 +377,84 @@ async function startCamera() {
 
 $('btnCam').addEventListener('click', startCamera);
 
-async function ping() {
+// ---- マスタの端末内キャッシュ（IndexedDB） ----
+let master = null;          // Map<jan, [name, price, supplier]>
+let masterUpdated = '';
+
+function idbOpen() {
+  return new Promise((res, rej) => {
+    const rq = indexedDB.open('labelapp', 1);
+    rq.onupgradeneeded = () => rq.result.createObjectStore('kv');
+    rq.onsuccess = () => res(rq.result);
+    rq.onerror = () => rej(rq.error);
+  });
+}
+async function idbGet(key) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const rq = db.transaction('kv').objectStore('kv').get(key);
+    rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error);
+  });
+}
+async function idbSet(key, val) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('kv', 'readwrite');
+    tx.objectStore('kv').put(val, key);
+    tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error);
+  });
+}
+
+function buildMap(rows) {
+  const m = new Map();
+  for (const r of rows) m.set(r[0], [r[1], r[2], r[3]]);
+  return m;
+}
+
+function setHdr(t) { $('hdrInfo').textContent = t; }
+
+async function loadMaster() {
+  // 1. 端末内のキャッシュを読む（あれば即使える）
   try {
-    const d = await (await fetch(API_URL + '?ping=1&_=' + Date.now())).json();
-    if (d.ok) $('hdrInfo').textContent = 'マスタ更新 ' + String(d.updated).slice(0, 16);
+    const c = await idbGet('master');
+    if (c && c.rows && c.rows.length) {
+      master = buildMap(c.rows); masterUpdated = c.updated;
+      setHdr('マスタ ' + String(c.updated).slice(0, 16) + '（端末内）');
+    }
   } catch (e) {}
+
+  // 2. サーバーの更新日時を確認し、違えば裏でダウンロード
+  let m;
+  try {
+    m = await (await fetch(API_URL + '?ping=1&_=' + Date.now())).json();
+  } catch (e) {
+    if (!master) setHdr('マスタ未取得・通信不可');
+    return;
+  }
+  if (!m.ok) return;
+  if (master && m.updated === masterUpdated) return;   // 最新
+
+  try {
+    const all = [];
+    for (let i = 0; i < m.chunks; i++) {
+      setHdr('マスタ取得中 ' + Math.round(i / m.chunks * 100) + '%');
+      const d = await (await fetch(API_URL + '?dump=' + i + '&_=' + Date.now())).json();
+      if (!d.ok) throw new Error(d.error || 'dump error');
+      for (const r of d.rows) all.push(r);
+    }
+    await idbSet('master', { updated: m.updated, rows: all });
+    master = buildMap(all); masterUpdated = m.updated;
+    setHdr('マスタ ' + String(m.updated).slice(0, 16) + '（端末内）');
+    toast('マスタを更新しました（' + all.length.toLocaleString() + '件）', 2000);
+  } catch (e) {
+    setHdr(master ? 'マスタ ' + String(masterUpdated).slice(0, 16) + '（更新失敗）' : 'マスタ取得失敗');
+  }
 }
 
 function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
 document.addEventListener('touchstart', () => { if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); }, { once: true });
-ping();
+loadMaster();
 </script>
 </body>
 </html>

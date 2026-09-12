@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<!-- version 2026-09-12h -->
+<!-- version 2026-09-12j -->
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -93,7 +93,7 @@
 
 <script>
 // ===== 設定 =====
-const API_URL = 'https://script.google.com/macros/s/AKfycbx3bWEMFeqk9R6Q-vX6GgHOxc3whTrKtT6AIZE08yQw9JalAXYH5CyU0tZzWoEiB-UcQw/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbyAUOzi4Iy6ofteZP3B2NXTo7qQ8Bu1iln0jrNdBUsKtvx8myW82yAamkAXTnYBvMgwZQ/exec';
 // ================
 
 const items = [];              // {jan, name, price, supplier}
@@ -407,8 +407,18 @@ async function idbSet(key, val) {
 
 function buildMap(rows) {
   const m = new Map();
-  for (const r of rows) m.set(r[0], [r[1], r[2], r[3]]);
+  for (const r of rows) {
+    const k = normalizeJan(r[0]);          // 数値化・0落ちなどの形式ゆれを吸収
+    if (k) m.set(k, [r[1], r[2], r[3]]);
+  }
   return m;
+}
+
+function fmtUpdated(u) {
+  const d = new Date(u);
+  if (isNaN(d)) return String(u).slice(0, 16);
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '/' + p(d.getMonth() + 1) + '/' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
 }
 
 function setHdr(t) { $('hdrInfo').textContent = t; }
@@ -419,7 +429,7 @@ async function loadMaster() {
     const c = await idbGet('master');
     if (c && c.rows && c.rows.length) {
       master = buildMap(c.rows); masterUpdated = c.updated;
-      setHdr('マスタ ' + String(c.updated).slice(0, 16) + '（端末内）');
+      setHdr('マスタ ' + fmtUpdated(c.updated) + '（端末内）');
     }
   } catch (e) {}
 
@@ -444,10 +454,10 @@ async function loadMaster() {
     }
     await idbSet('master', { updated: m.updated, rows: all });
     master = buildMap(all); masterUpdated = m.updated;
-    setHdr('マスタ ' + String(m.updated).slice(0, 16) + '（端末内）');
+    setHdr('マスタ ' + fmtUpdated(m.updated) + '（端末内）');
     toast('マスタを更新しました（' + all.length.toLocaleString() + '件）', 2000);
   } catch (e) {
-    setHdr(master ? 'マスタ ' + String(masterUpdated).slice(0, 16) + '（更新失敗）' : 'マスタ取得失敗');
+    setHdr(master ? 'マスタ ' + fmtUpdated(masterUpdated) + '（更新失敗）' : 'マスタ取得失敗');
   }
 }
 

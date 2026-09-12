@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<!-- version 2026-09-12f -->
+<!-- version 2026-09-12g -->
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -239,13 +239,19 @@ function camMsg(html, isError) {
   $('btnCam').addEventListener('click', startCamera);
 }
 
+let camStartedAt = 0, sameHintShown = false;
 function onCode(text) {
   lastRawText = text;
   const code = normalizeJan(text);
   if (!code) return;
   const now = Date.now();
-  // 同じバーコードをかざし続けている間は1回だけ。離して再度かざすと再カウント。
-  if (code === lastCode && now - lastSeen < 1500) { lastSeen = now; return; }
+  // 前回と同じコードは、(1)再開直後 (2)かざし続けている間 は無視。
+  // 一度カメラから外して1.5秒以上たってから再度かざすと、改めて追加できる。
+  if (code === lastCode && (now - camStartedAt < 3000 || now - lastSeen < 1500)) {
+    lastSeen = now;
+    if (!sameHintShown) { sameHintShown = true; toast('同じ商品です。もう1枚必要なら一度離してからかざしてください', 2500); }
+    return;
+  }
   lastCode = code; lastSeen = now;
   lookup(code);
 }
@@ -339,7 +345,7 @@ async function startCamera() {
 
     scanning = true;
     frames = 0;
-    lastRawText = ''; lastCode = '';
+    lastRawText = ''; camStartedAt = Date.now(); lastSeen = Date.now(); sameHintShown = false;
     $('btnStop').classList.add('show');
     startScanLoop(video);
 

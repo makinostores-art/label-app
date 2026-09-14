@@ -3,10 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<!-- version 2026-09-12j -->
+<!-- version 2026-09-14a -->
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ラベル作成">
 <title>ラベル用リスト作成</title>
 <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"
         onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';document.head.appendChild(s);"></script>
@@ -15,10 +16,12 @@
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; background: #f4f4f4; font-family: -apple-system, "Hiragino Sans", sans-serif; color: #222; }
-  body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
+  @supports not (height: 100dvh) { body { height: -webkit-fill-available; } }
 
   header { background: #2b5797; color: #fff; padding: 5px 12px; font-size: 15px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
   header small { font-size: 11px; font-weight: normal; opacity: .85; }
+  #btnRefresh { font-size: 13px; padding: 5px 9px; border: 1px solid rgba(255,255,255,.6); background: rgba(255,255,255,.15); color: #fff; border-radius: 6px; }
 
   #camWrap { position: relative; background: #000; height: 22vh; min-height: 130px; flex: none; }
   #video { width: 100%; height: 100%; object-fit: cover; }
@@ -62,7 +65,10 @@
 
 <header>
   <span>ラベル用リスト作成</span>
-  <small id="hdrInfo"></small>
+  <span style="display:flex;align-items:center;gap:8px">
+    <small id="hdrInfo"></small>
+    <button id="btnRefresh" title="マスタ更新">🔄 更新</button>
+  </span>
 </header>
 
 <div id="camWrap">
@@ -224,7 +230,15 @@ $('btnExcel').addEventListener('click', () => {
   const fname = d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes()) + '.xlsx';
 
   const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const blob = new Blob([buf], { type: mime });
+  const file = new File([blob], fname, { type: mime });
+
+  // ホーム画面アプリでも確実に渡せるよう共有シートを使う（NIIMBOT へ直接 / ファイルに保存）
+  if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+    navigator.share({ files: [file], title: fname }).catch(() => {});
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = fname;
   document.body.appendChild(a); a.click(); a.remove();
@@ -423,26 +437,41 @@ function fmtUpdated(u) {
 
 function setHdr(t) { $('hdrInfo').textContent = t; }
 
-async function loadMaster() {
+let loading = false, lastCheck = 0;
+async function loadMaster(manual) {
+  if (loading) return;
+  loading = true;
+  try { await loadMaster_(manual); } finally { loading = false; }
+}
+async function loadMaster_(manual) {
   // 1. 端末内のキャッシュを読む（あれば即使える）
-  try {
-    const c = await idbGet('master');
-    if (c && c.rows && c.rows.length) {
-      master = buildMap(c.rows); masterUpdated = c.updated;
-      setHdr('マスタ ' + fmtUpdated(c.updated) + '（端末内）');
-    }
-  } catch (e) {}
+  if (!master) {
+    try {
+      const c = await idbGet('master');
+      if (c && c.rows && c.rows.length) {
+        master = buildMap(c.rows); masterUpdated = c.updated;
+        setHdr('マスタ ' + fmtUpdated(c.updated) + '（端末内）');
+      }
+    } catch (e) {}
+  }
 
   // 2. サーバーの更新日時を確認し、違えば裏でダウンロード
   let m;
   try {
+    if (manual) setHdr('確認中…');
     m = await (await fetch(API_URL + '?ping=1&_=' + Date.now())).json();
   } catch (e) {
     if (!master) setHdr('マスタ未取得・通信不可');
+    else if (manual) { toast('通信できません。電波を確認してください', 2000); setHdr('マスタ ' + fmtUpdated(masterUpdated) + '（端末内）'); }
     return;
   }
+  lastCheck = Date.now();
   if (!m.ok) return;
-  if (master && m.updated === masterUpdated) return;   // 最新
+  if (master && m.updated === masterUpdated) {
+    setHdr('マスタ ' + fmtUpdated(masterUpdated) + '（端末内）');
+    if (manual) toast('マスタは最新です（' + fmtUpdated(masterUpdated) + '）', 2000);
+    return;
+  }
 
   try {
     const all = [];
@@ -464,7 +493,18 @@ async function loadMaster() {
 function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
 document.addEventListener('touchstart', () => { if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); }, { once: true });
-loadMaster();
+
+// 更新ボタン：マスタを確認して必要なら取り直す。長押し（1.5秒）でアプリ自体を再読み込み。
+$('btnRefresh').addEventListener('click', () => loadMaster(true));
+let pressTimer = null;
+$('btnRefresh').addEventListener('touchstart', () => { pressTimer = setTimeout(() => { pressTimer = null; location.reload(); }, 1500); });
+$('btnRefresh').addEventListener('touchend', () => { if (pressTimer) clearTimeout(pressTimer); });
+
+// ホーム画面アプリで開きっぱなしでも、前面に戻るたび（10分以上あいたら）マスタを確認
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && Date.now() - lastCheck > 10 * 60 * 1000) loadMaster(false);
+});
+loadMaster(false);
 </script>
 </body>
 </html>

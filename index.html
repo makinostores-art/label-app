@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<!-- version 2026-09-14a -->
+<!-- version 2026-09-18a -->
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -25,7 +25,9 @@
 
   #camWrap { position: relative; background: #000; height: 22vh; min-height: 130px; flex: none; }
   #video { width: 100%; height: 100%; object-fit: cover; }
-  #guide { position: absolute; left: 5%; right: 5%; top: 30%; height: 40%; border: 3px solid rgba(255,255,255,.8); border-radius: 8px; pointer-events: none; }
+  #guide { position: absolute; left: 20%; right: 20%; top: 37%; height: 26%; border: 3px solid rgba(255,255,255,.8); border-radius: 8px; pointer-events: none; }
+  #guide.pending { border-color: #f1c40f; border-width: 4px; }
+  #guide.ok { border-color: #2ecc71; border-width: 4px; }
   #camMsg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 20px; text-align: center; padding: 16px; background: rgba(0,0,0,.6); }
   #camMsg.hide { display: none; }
   #camMsg button { font-size: 19px; font-weight: bold; padding: 12px 24px; border: none; border-radius: 14px; background: #2b5797; color: #fff; }
@@ -259,12 +261,22 @@ function camMsg(html, isError) {
   $('btnCam').addEventListener('click', startCamera);
 }
 
+const CONFIRM_COUNT = 3;        // 同じコードが連続で何回読めたら確定するか
 let camStartedAt = 0, sameHintShown = false;
+let candCode = '', candCount = 0, candAt = 0;
+
 function onCode(text) {
   lastRawText = text;
   const code = normalizeJan(text);
   if (!code) return;
   const now = Date.now();
+
+  // 連続して同じコードが読めるまで確定しない（隣の商品を一瞬拾っても無視）
+  if (code === candCode && now - candAt < 800) { candCount++; } else { candCode = code; candCount = 1; }
+  candAt = now;
+  if (candCount < CONFIRM_COUNT) { $('guide').className = 'pending'; return; }
+  $('guide').className = 'ok';
+  candCode = ''; candCount = 0;
   // 前回と同じコードは、(1)再開直後 (2)かざし続けている間 は無視。
   // 一度カメラから外して1.5秒以上たってから再度かざすと、改めて追加できる。
   if (code === lastCode && (now - camStartedAt < 3000 || now - lastSeen < 1500)) {
@@ -300,8 +312,8 @@ function startScanLoop(video) {
     try {
       if (video.readyState >= 2 && video.videoWidth) {
         const vw = video.videoWidth, vh = video.videoHeight;
-        const sx = Math.round(vw * 0.05), sw = Math.round(vw * 0.90);
-        const sy = Math.round(vh * 0.30), sh = Math.round(vh * 0.40);
+        const sx = Math.round(vw * 0.20), sw = Math.round(vw * 0.60);
+        const sy = Math.round(vh * 0.37), sh = Math.round(vh * 0.26);
         if (cropCanvas.width !== sw || cropCanvas.height !== sh) { cropCanvas.width = sw; cropCanvas.height = sh; }
         cropCtx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
         frames++;
@@ -366,6 +378,7 @@ async function startCamera() {
     scanning = true;
     frames = 0;
     lastRawText = ''; camStartedAt = Date.now(); lastSeen = Date.now(); sameHintShown = false;
+    candCode = ''; candCount = 0; $('guide').className = '';
     $('btnStop').classList.add('show');
     startScanLoop(video);
 
@@ -477,8 +490,17 @@ async function loadMaster_(manual) {
     const all = [];
     for (let i = 0; i < m.chunks; i++) {
       setHdr('マスタ取得中 ' + Math.round(i / m.chunks * 100) + '%');
-      const d = await (await fetch(API_URL + '?dump=' + i + '&_=' + Date.now())).json();
-      if (!d.ok) throw new Error(d.error || 'dump error');
+      let d = null, lastErr = null;
+      for (let t = 0; t < 3 && !d; t++) {          // 失敗しても3回まで再試行
+        try {
+          const res = await fetch(API_URL + '?dump=' + i + '&_=' + Date.now());
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const j = await res.json();
+          if (!j.ok) throw new Error(j.error || 'dump error');
+          d = j;
+        } catch (e) { lastErr = e; await new Promise(r => setTimeout(r, 1500)); }
+      }
+      if (!d) throw new Error((i + 1) + '/' + m.chunks + ' 番目で失敗: ' + (lastErr && lastErr.message || lastErr));
       for (const r of d.rows) all.push(r);
     }
     await idbSet('master', { updated: m.updated, rows: all });
@@ -487,6 +509,7 @@ async function loadMaster_(manual) {
     toast('マスタを更新しました（' + all.length.toLocaleString() + '件）', 2000);
   } catch (e) {
     setHdr(master ? 'マスタ ' + fmtUpdated(masterUpdated) + '（更新失敗）' : 'マスタ取得失敗');
+    toast('マスタ取得エラー: ' + (e.message || e), 5000);
   }
 }
 
